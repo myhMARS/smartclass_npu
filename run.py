@@ -1,3 +1,4 @@
+import configparser
 import threading
 import time
 from copy import deepcopy
@@ -6,9 +7,15 @@ import cv2
 import numpy as np
 from PIL import ImageGrab
 
-from model_utils import FaceTracker, resize_pos, plot_one_box
 from apis import Api
+from model_utils import FaceTracker, plot_one_box
 from run_model.face_model import FaceRecognition
+
+config = configparser.ConfigParser()
+config.read("config.ini")
+COLORS = {}
+for action in config.options("colors"):
+    COLORS[action] = eval(config.get("colors", action))
 
 thread_lock_video = threading.Lock()
 
@@ -26,16 +33,52 @@ def format_box_location(box):
     return box[0], box[1], box[2] - box[0], box[3] - box[1]
 
 
+def calculate_iou(box1, box2):
+    iou = 0
+    xmin1, ymin1, xmax1, ymax1 = box1
+    xmin2, ymin2, xmax2, ymax2 = box2
+
+    # 计算交集的左上角和右下角坐标
+    xi1 = max(xmin1, xmin2)
+    xi2 = min(xmax1, xmax2)
+    yi1 = max(ymin1, ymin2)
+    yi2 = min(ymax1, ymax2)
+
+    inter_width = max(0, xi2 - xi1)
+    inter_height = max(0, yi2 - yi1)
+
+    union_area = inter_width * inter_height
+
+    area = (xmax2 - xmin2) * (ymax2 - ymin2)
+    if area != 0:
+        iou = (union_area / area) * 100 if union_area != 0 else 0
+    return iou
+
+
+def find_max_overlap_index(actionbox, boxes):
+    index = -1
+    max_iou = 60
+    ious = []
+    box_location = (actionbox['xmin'], actionbox['ymin'], actionbox['xmax'], actionbox['ymax'])
+    for i in range(len(boxes)):
+        iou = calculate_iou(box_location, boxes[i])
+        ious.append(iou)
+        if iou > max_iou:
+            max_iou = iou
+            index = i
+    return index
+
+
 class VideoProcess(threading.Thread):
 
-    def __init__(self, camera_id, img_height, img_width):
+    def __init__(self, camera_id, video_size):
         super(VideoProcess, self).__init__()
         self.camera_id = camera_id
-        self.img_height = img_height
-        self.img_width = img_width
+        self.video_size = video_size
         self.ready = False
-        self.face_frame = np.zeros((img_height, img_width, 3), dtype=np.uint8)
-        self.frame = np.zeros((img_height, img_width, 3), dtype=np.uint8)
+        self.face_frame = np.zeros((video_size[0], video_size[1], 3), dtype=np.uint8)
+        self.frame = np.zeros((video_size[0], video_size[1], 3), dtype=np.uint8)
+        self.first_frame = np.zeros((video_size[0], video_size[1], 3), dtype=np.uint8)
         self.daemon = True
 
     def get_frame(self):
@@ -57,12 +100,14 @@ class VideoProcess(threading.Thread):
         print(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS)
         ret, frame = cap.read()
-        self.face_frame = frame
+        self.face_frame = cv2.resize(frame, self.video_size)
+        ret, frame = cap.read()
+        self.first_frame = cv2.resize(frame, self.video_size)
         self.ready = True
         while not thread_exit:
             ret, frame = cap.read()
             if ret:
-                frame = cv2.resize(frame, (self.img_width, self.img_height))
+                frame = cv2.resize(frame, self.video_size)
                 thread_lock_video.acquire()
                 self.frame = frame
                 thread_lock_video.release()
@@ -72,72 +117,28 @@ class VideoProcess(threading.Thread):
         cap.release()
 
 
-# class FaceDetector(multiprocessing.Process):
-#     def __init__(self, img_list, locations_list, lock, run_flag):
-#         super(FaceDetector, self).__init__()
-#         self.model = FaceRecognition()
-#         self.img_cache: multiprocessing.Queue = img_list
-#         self.locations = locations_list
-#         self.lock = lock
-#         self.run_flag = run_flag
-#         self.y_offset = 160
-#
-#     def get_locations(self):
-#         return self.locations
-#
-#     def get_center(self, name, update):
-#         x, y = self.locations[name]
-#         x = x + update[0] / 2
-#         y = y + update[1] / 2
-#         return int(x), int(y)
-#
-#     def run(self):
-#         while True:
-#             if not self.run_flag.value:
-#                 break
-#             if not self.img_cache.empty():
-#                 image = self.img_cache.get()
-#                 faces = self.model.get_faces(image)
-#                 for face in faces:
-#                     self.locations.append(face)
-#                 # if faces is not None:
-#                 #     for face in faces:
-#                 #         center_x = face['xmax']
-#                 #         center_y = face['ymax']
-#                 #         with self.lock:
-#                 #             if self.locations.get(face['name']) is None:
-#                 #                 self.locations[face['name']] = (center_x, center_y)
-#                 #             else:
-#                 #                 self.locations[face['name']] = (center_x, center_y)
-#                 #                 # self.locations[face['name']] = self.get_center(face['name'], (center_x, center_y))
-
-
 def main():
     global thread_exit
 
-    camera_id = './test_video1.mp4'
-    img_height = 1920
-    img_width = 1080
-    model = Api(face=False, action=True)
-    video_thread = VideoProcess(camera_id, img_height, img_width)
-    # faceDetector = FaceRecognition()
-    # faceTracker = FaceTracker()
+    camera_id = './test_video2.mp4'
+    video_size = (1920, 1080)
+    model = Api()
+    video_thread = VideoProcess(camera_id, video_size)
+    faceDetector = FaceRecognition()
+    faceTracker = FaceTracker()
     video_thread.start()
-    # thread_lock_video.acquire()
-    # frame = video_thread.get_face_frame()
-    # thread_lock_video.release()
-    # faces = faceDetector.get_faces(frame)
-    # frame = cv2.resize(frame, SCREEN_SIZE)
-    # for box in faces:
-    #     box['xmin'], box['ymin'] = resize_pos(box['xmin'], box['ymin'], (1920, 1080), SCREEN_SIZE)
-    #     box['xmax'], box['ymax'] = resize_pos(box['xmax'], box['ymax'], (1920, 1080), SCREEN_SIZE)
-    #     # frame = plot_one_box(
-    #     #     [box['xmin'], box['ymin'], box['xmax'], box['ymax']],
-    #     #     frame,
-    #     #     label=box['name'],
-    #     #     color=(255, 0, 0))
-    #     box_location = format_box_location((box['xmin'], box['ymin'], box['xmax'], box['ymax']))
-    #     faceTracker.create_tracker(frame, box['name'], box_location)
+    thread_lock_video.acquire()
+    face_frame = video_thread.get_face_frame()
+    frame = deepcopy(video_thread.first_frame)
+    thread_lock_video.release()
+    faces = faceDetector.get_faces(face_frame)
+    for box in faces:
+        box_location = format_box_location((box['xmin'], box['ymin'], box['xmax'], box['ymax']))
+        faceTracker.create_tracker(frame, box['name'], box_location)
+        print(box['name'])
+    frame = faceTracker.update(frame)
+    # cv2.imshow('face', face_frame)
+    # cv2.imshow('face_frame', frame)
     #
     #     cv2.imshow('face', frame)
 
@@ -146,54 +147,30 @@ def main():
     # cv2.setWindowProperty(out_win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     # cv2.imshow('face', frame)
     # cv2.waitKey(0)
-    # manager = multiprocessing.Manager()
-    # thread_lock_face = manager.Lock()
-    # locations_list = manager.list()
-    # detect_face_flag = manager.Value(ctypes.c_bool, True)
 
     while not thread_exit:
         thread_lock_video.acquire()
         frame = video_thread.get_frame()
         thread_lock_video.release()
+        action_boxes = model.process_frame(frame, video_size)
+        frame = faceTracker.update(frame)
+        names = faceTracker.names
+        face_boxes = faceTracker.boxes
+        for action_box in action_boxes:
+            index = find_max_overlap_index(action_box, face_boxes)
+            frame = plot_one_box([action_box['xmin'], action_box['ymin'], action_box['xmax'], action_box['ymax']],
+                                 frame,
+                                 label=f'{action_box['name']} name:{names[index] if index != -1 else 'None'}',
+                                 color=COLORS[action_box['name']])
         out_win = "smartclass"
         cv2.namedWindow(out_win, cv2.WINDOW_NORMAL)
         cv2.setWindowProperty(out_win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
-        frame = model.process_frame(frame)
-        # frame = faceTracker.update(frame)
-        # with thread_lock_face:
-        #     for bbox in locations_list:
-        #         box = bbox.copy()
-        #         box['xmin'], box['ymin'] = resize_pos(box['xmin'], box['ymin'], (1920, 1080), SCREEN_SIZE)
-        #         box['xmax'], box['ymax'] = resize_pos(box['xmax'], box['ymax'], (1920, 1080), SCREEN_SIZE)
-        #         # frame = model_utils.plot_one_box(
-        #         #     [box['xmin'], box['ymin'], box['xmax'], box['ymax']],
-        #         #     frame,
-        #         #     label=box['name'],
-        #         #     color=(255, 0, 0))
-        #         print(box['xmin'], box['ymin'], (box['xmax'] - box['xmin']), (box['ymax'] - box['ymin']))
-        cv2.imshow('smartclass', cv2.resize(frame, (img_height, img_width)))
+        cv2.imshow('smartclass', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             thread_exit = True
 
     cv2.destroyAllWindows()
-
-    # thread_lock_face.acquire()
-    # detect_face_flag.value = False
-    # thread_lock_face.release()
     video_thread.join()
-
-    # for i in range(len(face_processes)):
-    #     if face_processes[i].is_alive():
-    #         face_processes[i].terminate()
-    # for process in face_processes:
-    #     process.join()
-    #
-    #     print(len(face_processes))
-
-    print('all process done')
-    # with thread_lock_face:
-    #     print(locations_list)
 
 
 if __name__ == "__main__":
