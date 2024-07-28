@@ -43,7 +43,7 @@ class FaceRecognition:
 
     # @cost
     def get_faces(self, image: np.array) -> list[dict]:
-        image = cv2.resize(image, (1920, 1080))
+        # image = cv2.resize(image, (1920, 1080))
         face_locations = face_recognition.face_locations(image)
         if not face_locations:
             return []
@@ -64,7 +64,7 @@ class FaceRecognition:
     def get_labels(self, compare_faces_encodings):
         face_label = []
         for compare_face_encoding in compare_faces_encodings:
-            match = face_recognition.compare_faces(self.face_lib_encoding, compare_face_encoding, tolerance=0.39)
+            match = face_recognition.compare_faces(self.face_lib_encoding, compare_face_encoding, tolerance=0.3)
             if any(match):
                 face_label.append(self.face_lib_label[match.index(True)])
         return face_label
