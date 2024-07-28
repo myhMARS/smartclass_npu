@@ -1,9 +1,3 @@
-# -*- coding: UTF-8 -*-
-# Author: myhMARS
-# @Email: 1533512157@qq.com
-# @Time : 2024/5/27 下午10:59
-from collections import defaultdict
-
 import cv2
 
 
@@ -54,8 +48,7 @@ class FaceTracker(object):
 
     def create_tracker(self, frame, name, box):
         tracker = cv2.legacy.MultiTracker.create()
-        tracker.add(cv2.legacy.TrackerMOSSE.create(), frame, box)
-        print(name)
+        tracker.add(cv2.legacy.TrackerCSRT.create(), frame, box)
         self.names.append(name)
         self.boxes.append(box)
         self.trackers.append(tracker)
@@ -63,11 +56,13 @@ class FaceTracker(object):
     def update(self, frame):
         boxes = []
         self.boxes = []
-        for tracker in self.trackers:
-            box: tuple = tracker.update(frame)
-            boxes.append(box)
+        for index in range(len(self.trackers)):
+            tracker = self.trackers[index]
+            success, box = tracker.update(frame)
+            if success:
+                boxes.append(box)
         for box in boxes:
-            newbox = box[1][0]
+            newbox = box[0]
             p1 = (int(newbox[0]), int(newbox[1]))
             p2 = (int(newbox[0] + newbox[2]), int(newbox[1] + newbox[3]))
             self.boxes.append(p1 + p2)
