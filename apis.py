@@ -40,12 +40,10 @@ class Api:
 
     def process_frame(self, frame, video_format):
         action_boxes = []
-
-        if self.action:
-            action_boxes = self.behavior_detection(cv2.resize(frame, (IMG_SIZE, IMG_SIZE)))
-            for box in action_boxes:
-                box['xmin'], box['ymin'] = model_utils.resize_pos(box['xmin'], box['ymin'], (640, 640), video_format)
-                box['xmax'], box['ymax'] = model_utils.resize_pos(box['xmax'], box['ymax'], (640, 640), video_format)
+        action_boxes = self.behavior_detection(cv2.resize(frame, (IMG_SIZE, IMG_SIZE)))
+        for box in action_boxes:
+            box['xmin'], box['ymin'] = model_utils.resize_pos(box['xmin'], box['ymin'], (640, 640), video_format)
+            box['xmax'], box['ymax'] = model_utils.resize_pos(box['xmax'], box['ymax'], (640, 640), video_format)
 
         return action_boxes
 
