@@ -1,3 +1,6 @@
+import threading
+import time
+
 import cv2
 
 
@@ -9,6 +12,14 @@ def resize_pos(x1, y1, src_size, tar_size):
     y2 = (h2 / h1) * y1
     x2 = (w2 / w1) * x1
     return int(x2), int(y2)
+
+
+def convert_coordinates(xmin, ymin, xmax, ymax):
+    x = xmin
+    y = ymin
+    width = xmax - xmin
+    height = ymax - ymin
+    return x, y, width, height
 
 
 class Colors:
@@ -48,34 +59,63 @@ class FaceTracker(object):
 
     def create_tracker(self, frame, name, box):
         tracker = cv2.legacy.MultiTracker.create()
-        tracker.add(cv2.legacy.TrackerCSRT.create(), frame, box)
+        tracker.add(cv2.legacy.TrackerKCF.create(), frame, box)
         self.names.append(name)
         self.boxes.append(box)
         self.trackers.append(tracker)
 
     def update(self, frame):
+        pre_boxes = self.boxes.copy()
         boxes = []
-        self.boxes = []
+
         for index in range(len(self.trackers)):
             tracker = self.trackers[index]
             success, box = tracker.update(frame)
             if success:
                 boxes.append(box)
+            else:
+                pre_box = convert_coordinates(*pre_boxes[index])
+                boxes.append([pre_box])
+                self.tracker_keep(frame, index, pre_box)
+
+        self.boxes = []
         for box in boxes:
             newbox = box[0]
             p1 = (int(newbox[0]), int(newbox[1]))
             p2 = (int(newbox[0] + newbox[2]), int(newbox[1] + newbox[3]))
             self.boxes.append(p1 + p2)
-            # cv2.rectangle(frame, p1, p2, (200, 0, 0), thickness=3)
+
+            cv2.rectangle(frame, p1, p2, (200, 0, 0), thickness=3)
         return frame
 
+    def tracker_keep(self, frame, index, box):
+        self.trackers.pop(index)
+        name = self.names.pop(index)
+        self.create_tracker(frame, name, box)
 
-class ActionManager(object):
+
+action_thread_lock = threading.Lock()
+
+
+class ActionManager(threading.Thread):
     def __init__(self):
+        super(ActionManager, self).__init__()
         self.person = dict()
+        self.thread_exit = False
 
     def sign(self, name):
         self.person[name] = {
             'signed': True,
             'actions': dict()
         }
+
+    def exit(self):
+        action_thread_lock.acquire()
+        # TODO:数据归纳发送部分
+        self.thread_exit = True
+        action_thread_lock.release()
+
+    def run(self):
+        while not self.thread_exit:
+            # TODO: 数据整理储存
+            pass
