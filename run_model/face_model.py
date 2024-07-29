@@ -43,7 +43,6 @@ class FaceRecognition:
 
     # @cost
     def get_faces(self, image: np.array) -> list[dict]:
-        # image = cv2.resize(image, (1920, 1080))
         face_locations = face_recognition.face_locations(image)
         if not face_locations:
             return []
