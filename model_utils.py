@@ -1,7 +1,10 @@
 import threading
+import datetime
 import time
 
 import cv2
+
+from database.db_manager import DBManager
 
 
 def resize_pos(x1, y1, src_size, tar_size):
@@ -94,28 +97,47 @@ class FaceTracker(object):
         self.create_tracker(frame, name, box)
 
 
-action_thread_lock = threading.Lock()
-
-
 class ActionManager(threading.Thread):
-    def __init__(self):
+    def __init__(self, action_queue, manager_thread_lock):
         super(ActionManager, self).__init__()
-        self.person = dict()
+        self.action_store = []
+        self.video_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.action_queue = action_queue
+        self.manager_thread_lock = manager_thread_lock
         self.thread_exit = False
+        self.db = DBManager()
 
-    def sign(self, name):
-        self.person[name] = {
-            'signed': True,
-            'actions': dict()
-        }
+    def save(self, action):
+        action.date = self.video_time
+        self.action_store.append([
+            action.name,
+            action.class_id,
+            action.date,
+            action.action_type,
+            action.timestamp,
+            action.xmin,
+            action.ymin,
+            action.xmax,
+            action.ymax,
+        ])
+
+    def db_save(self):
+        self.db.insert_action(self.action_store)
 
     def exit(self):
-        action_thread_lock.acquire()
-        # TODO:数据归纳发送部分
-        self.thread_exit = True
-        action_thread_lock.release()
+        with self.manager_thread_lock:
+            self.thread_exit = True
 
     def run(self):
-        while not self.thread_exit:
-            # TODO: 数据整理储存
-            pass
+        while True:
+            action = None
+            with self.manager_thread_lock:
+                if self.thread_exit and not self.action_queue:
+                    break
+                if self.action_queue:
+                    action = self.action_queue.pop()
+            if action:
+                self.save(action)
+            else:
+                time.sleep(1)
+        self.db_save()
