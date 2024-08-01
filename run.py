@@ -1,5 +1,4 @@
 import configparser
-import datetime
 import threading
 import time
 from copy import deepcopy
@@ -54,6 +53,19 @@ def calculate_iou(box1, box2):
     if area != 0:
         iou = (union_area / area) * 100 if union_area != 0 else 0
     return iou
+
+
+class Action(object):
+    def __init__(self, name, class_id, action_type, xmin, ymin, xmax, ymax, timestamp):
+        self.name = name
+        self.class_id = class_id
+        self.action_type = action_type
+        self.date = 0
+        self.xmin = xmin
+        self.ymin = ymin
+        self.xmax = xmax
+        self.ymax = ymax
+        self.timestamp = timestamp
 
 
 def find_max_overlap_index(actionbox, boxes):
@@ -157,33 +169,40 @@ def main():
         timestamp = video_thread.get_timestamp()
         thread_lock_video.release()
         action_boxes = model.process_frame(frame, video_size)
-        a = time.time()
         frame = faceTracker.update(frame)
+
         names = faceTracker.names
         face_boxes = faceTracker.boxes
         for action_box in action_boxes:
             index = find_max_overlap_index(action_box, face_boxes)
-            action = {
-                'name': names[index] if index != -1 else 'Unknown',
-                'action': action_box['name'],
-                'location': [action_box['xmin'], action_box['ymin'], action_box['xmax'], action_box['ymax']],
-                'timestamp': timestamp,
-            }
+            name = str(names[index]) if index != -1 else 'Unknown'
+            action_type = action_box['name']
+            action = Action(
+                name,
+                camera_id,
+                action_type,
+                action_box['xmin'],
+                action_box['ymin'],
+                action_box['xmax'],
+                action_box['ymax'],
+                timestamp
+            )
             action_queue.append(action)
-            frame = plot_one_box(action['location'],
+            frame = plot_one_box([action.xmin, action.ymin, action.xmax, action.ymax],
                                  frame,
-                                 label=f'{action["action"]} name:{action["name"] if index != -1 else 'Unknown'}',
-                                 color=COLORS[action['action']])
-        # print('cost:', time.time() - a)
+                                 label=f'{action.action_type} name:{action.name}',
+                                 color=COLORS[action.action_type])
         out_win = "smartclass"
         cv2.namedWindow(out_win, cv2.WINDOW_NORMAL)
         cv2.setWindowProperty(out_win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.imshow('smartclass', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             thread_exit = True
-    runtime = time.time() - start_time
+
     cv2.destroyAllWindows()
+    actionManager.exit()
     video_thread.join()
+    actionManager.join()
 
 
 if __name__ == "__main__":
