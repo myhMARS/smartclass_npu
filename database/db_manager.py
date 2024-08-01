@@ -18,22 +18,44 @@ class DBManager(object):
 
     def check_table(self):
         self.cursor.execute("""
-        CREATE TABLE IF NOT EXISTS students ()
+        CREATE TABLE IF NOT EXISTS students (
+            id VARCHAR(30) PRIMARY KEY,
+            name VARCHAR(30),
+            email VARCHAR(255)
+        );
         """)
         self.cursor.execute("""
-        CREATE TABLE IF NOT EXISTS actions ()
+        CREATE TABLE IF NOT EXISTS actions (
+            id VARCHAR(30),
+            class_id VARCHAR(30),
+            datetime DATETIME,
+            action VARCHAR(30),
+            timestamp int,
+            x1 int,
+            y1 int,
+            x2 int,
+            y2 int,
+            FOREIGN KEY (id) REFERENCES students(id)
+        )
         """)
 
     def check_init(self):
         self.cursor.execute("SELECT SCHEMA_NAME FROM information_schema.schemata WHERE SCHEMA_NAME = %s",
                             (sql_config.db,))
         result = self.cursor.fetchone()
-        if result:
-            self.cursor.execute(
-                "SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA = %s",
-                (sql_config.db,)
-            )
-            result = self.cursor.fetchall()
-        else:
-            self.cursor.execute("CREATE SCHEMA %s", (sql_config.db,))
+        if not result:
+            self.cursor.execute(f"CREATE DATABASE {sql_config.db}")
+        self.conn.select_db(sql_config.db)
         self.check_table()
+
+    def insert_action(self, data):
+        insert_query = """
+            INSERT INTO actions (id, class_id, datetime, action, timestamp, x1, y1, x2, y2)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        try:
+            self.cursor.execute(insert_query, data)
+        except Exception as e:
+            print(e)
+
+        self.conn.commit()
