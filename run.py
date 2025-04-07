@@ -10,6 +10,7 @@ from PIL import ImageGrab
 from apis import Api
 from model_utils import FaceTracker, ActionManager, plot_one_box
 from run_model.face_model import FaceRecognition
+from export_html_report import generate_html_report
 
 config = configparser.ConfigParser()
 config.read("config.ini")
@@ -140,7 +141,12 @@ class VideoProcess(threading.Thread):
 def main():
     global thread_exit
     camera_id = './test_video2.mp4'
-    video_size = (1920, 1080)
+    video = cv2.VideoCapture(camera_id)
+
+    width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    video_size = (width, height)
+    # video_size = (1920, 1080)
     model = Api()
     video_thread = VideoProcess(camera_id, video_size)  # 视频流线程
     faceDetector = FaceRecognition()  # 人脸识别
@@ -151,7 +157,6 @@ def main():
     actionManager.start()
     video_thread.start()
 
-    start_time = time.time()
     thread_lock_video.acquire()
     face_frame = video_thread.get_face_frame()
     frame = deepcopy(video_thread.first_frame)
@@ -200,9 +205,10 @@ def main():
             thread_exit = True
 
     cv2.destroyAllWindows()
-    actionManager.exit()
+    actionManager.exit(camera_id, video_thread.get_timestamp())
     video_thread.join()
     actionManager.join()
+    generate_html_report(camera_id, actionManager.video_time)
 
 
 if __name__ == "__main__":

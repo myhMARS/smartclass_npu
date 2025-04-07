@@ -39,7 +39,6 @@ class Api:
         return results
 
     def process_frame(self, frame, video_format):
-        action_boxes = []
         action_boxes = self.behavior_detection(cv2.resize(frame, (IMG_SIZE, IMG_SIZE)))
         for box in action_boxes:
             box['xmin'], box['ymin'] = model_utils.resize_pos(box['xmin'], box['ymin'], (640, 640), video_format)

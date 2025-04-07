@@ -15,6 +15,7 @@ class DBManager(object):
         )
         self.cursor = self.conn.cursor()
         self.check_init()
+        self.check_table()
 
     def check_table(self):
         self.cursor.execute("""
@@ -34,8 +35,14 @@ class DBManager(object):
             x1 int,
             y1 int,
             x2 int,
-            y2 int,
-            FOREIGN KEY (id) REFERENCES students(id)
+            y2 int
+        )
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS classes (
+            class_id VARCHAR(30),
+            date DATETIME,
+            duration int
         )
         """)
 
@@ -46,7 +53,6 @@ class DBManager(object):
         if not result:
             self.cursor.execute(f"CREATE DATABASE {sql_config.db}")
         self.conn.select_db(sql_config.db)
-        self.check_table()
 
     def insert_action(self, data):
         insert_query = """
@@ -54,8 +60,33 @@ class DBManager(object):
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         try:
-            self.cursor.execute(insert_query, data)
+            self.cursor.executemany(insert_query, data)
         except Exception as e:
             print(e)
 
         self.conn.commit()
+
+    def insert_class(self, class_id, date, duration):
+        insert_query = """
+        INSERT INTO classes (class_id, date,duration)
+        VALUES (%s, %s, %s)
+        """
+        self.cursor.execute(insert_query, [class_id, date, duration])
+        self.conn.commit()
+
+    def get_students(self):
+        self.cursor.execute("SELECT id,name,email FROM students")
+        result = self.cursor.fetchall()
+
+        return [_ for _ in result]
+
+    def get_actions(self, name_id, class_id):
+        self.cursor.execute("SELECT action, timestamp FROM actions WHERE id = %s AND class_id = %s",
+                            (name_id, class_id))
+        result = self.cursor.fetchall()
+        return list(result)
+
+    def get_class_info(self, class_id, date):
+        self.cursor.execute("SELECT class_id,duration,date FROM classes WHERE class_id = %s AND date = %s", (class_id, date))
+        result = self.cursor.fetchall()
+        return list(result[0])

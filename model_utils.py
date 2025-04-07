@@ -88,13 +88,13 @@ class FaceTracker(object):
             p2 = (int(newbox[0] + newbox[2]), int(newbox[1] + newbox[3]))
             self.boxes.append(p1 + p2)
 
-            cv2.rectangle(frame, p1, p2, (200, 0, 0), thickness=3)
+            # cv2.rectangle(frame, p1, p2, (200, 0, 0), thickness=3)
         return frame
 
     def tracker_keep(self, frame, index, box):
-        self.trackers.pop(index)
-        name = self.names.pop(index)
-        self.create_tracker(frame, name, box)
+        tracker = cv2.legacy.MultiTracker.create()
+        tracker.add(cv2.legacy.TrackerKCF.create(), frame, box)
+        self.trackers[index] = tracker
 
 
 class ActionManager(threading.Thread):
@@ -124,7 +124,8 @@ class ActionManager(threading.Thread):
     def db_save(self):
         self.db.insert_action(self.action_store)
 
-    def exit(self):
+    def exit(self, camera_id, duration):
+        self.db.insert_class(camera_id, self.video_time, duration)
         with self.manager_thread_lock:
             self.thread_exit = True
 
