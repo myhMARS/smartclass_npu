@@ -5,7 +5,6 @@ import cv2
 
 import model_utils
 from run_model.gpu_model import ONNX_Model
-from model_utils import plot_one_box
 
 config = configparser.ConfigParser()
 config.read("config.ini")

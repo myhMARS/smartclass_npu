@@ -8,7 +8,7 @@ import numpy as np
 from PIL import ImageGrab
 
 from apis import Api
-from model_utils import FaceTracker, ActionManager, plot_one_box
+from model_utils import plot_one_box
 from run_model.face_model import FaceRecognition
 from export_html_report import generate_html_report
 
@@ -57,8 +57,7 @@ def calculate_iou(box1, box2):
 
 
 class Action(object):
-    def __init__(self, name, class_id, action_type, xmin, ymin, xmax, ymax, timestamp):
-        self.name = name
+    def __init__(self, class_id, action_type, xmin, ymin, xmax, ymax, timestamp):
         self.class_id = class_id
         self.action_type = action_type
         self.date = 0
@@ -149,41 +148,17 @@ def main():
     # video_size = (1920, 1080)
     model = Api()
     video_thread = VideoProcess(camera_id, video_size)  # 视频流线程
-    faceDetector = FaceRecognition()  # 人脸识别
-    faceTracker = FaceTracker()  # 目标追踪
-    action_queue = []
-    manager_thread_lock = threading.Lock()
-    actionManager = ActionManager(action_queue, manager_thread_lock)  # 行为管理线程
-    actionManager.start()
     video_thread.start()
-
-    thread_lock_video.acquire()
-    face_frame = video_thread.get_face_frame()
-    frame = deepcopy(video_thread.first_frame)
-    thread_lock_video.release()
-
-    faces = faceDetector.get_faces(face_frame)
-    for box in faces:
-        box_location = format_box_location((box['xmin'], box['ymin'], box['xmax'], box['ymax']))
-        faceTracker.create_tracker(frame, box['name'], box_location)
-    faceTracker.update(frame)
-
     while not thread_exit:
         thread_lock_video.acquire()
         frame = video_thread.get_frame()
         timestamp = video_thread.get_timestamp()
         thread_lock_video.release()
         action_boxes = model.process_frame(frame, video_size)
-        frame = faceTracker.update(frame)
 
-        names = faceTracker.names
-        face_boxes = faceTracker.boxes
         for action_box in action_boxes:
-            index = find_max_overlap_index(action_box, face_boxes)
-            name = str(names[index]) if index != -1 else 'Unknown'
             action_type = action_box['name']
             action = Action(
-                name,
                 camera_id,
                 action_type,
                 action_box['xmin'],
@@ -192,10 +167,9 @@ def main():
                 action_box['ymax'],
                 timestamp
             )
-            action_queue.append(action)
             frame = plot_one_box([action.xmin, action.ymin, action.xmax, action.ymax],
                                  frame,
-                                 label=f'{action.action_type} name:{action.name}',
+                                 label=f'{action.action_type}',
                                  color=COLORS[action.action_type])
         out_win = "smartclass"
         cv2.namedWindow(out_win, cv2.WINDOW_NORMAL)
@@ -205,10 +179,7 @@ def main():
             thread_exit = True
 
     cv2.destroyAllWindows()
-    actionManager.exit(camera_id, video_thread.get_timestamp())
     video_thread.join()
-    actionManager.join()
-    generate_html_report(camera_id, actionManager.video_time)
 
 
 if __name__ == "__main__":
