@@ -9,8 +9,7 @@ from PIL import ImageGrab
 
 from apis import Api
 from model_utils import plot_one_box
-from run_model.face_model import FaceRecognition
-from export_html_report import generate_html_report
+
 
 config = configparser.ConfigParser()
 config.read("config.ini")
